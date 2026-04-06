@@ -32,13 +32,6 @@ const userTemplate = ({ name, purpose }) => `
 `;
 
 module.exports = async (req, res) => {
-  console.log("=== REQUEST RECEIVED ===");
-  console.log("Method:", req.method);
-  console.log("SENDGRID_API_KEY set:", !!process.env.SENDGRID_API_KEY);
-  console.log("SENDGRID_API_KEY value:", process.env.SENDGRID_API_KEY ? process.env.SENDGRID_API_KEY.substring(0, 10) + "..." : "NOT SET");
-  console.log("OWNER_EMAIL:", process.env.OWNER_EMAIL);
-  console.log("FROM_EMAIL:", process.env.FROM_EMAIL);
-
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -55,46 +48,52 @@ module.exports = async (req, res) => {
   }
 
   const { name, email, purpose, description } = req.body;
-  console.log("Body:", req.body);
 
   if (!name || !email || !purpose || !description) {
     return res.status(400).json({ success: false, error: "All fields are required" });
   }
 
-  if (!process.env.SENDGRID_API_KEY) {
-    console.error("ERROR: SENDGRID_API_KEY is not set in environment");
-    return res.status(500).json({ success: false, error: "Email service not configured" });
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const ownerEmail = process.env.OWNER_EMAIL;
+  const fromEmail = process.env.FROM_EMAIL || "contact@app-to-contact.com";
+
+  return res.status(200).json({
+    debug: true,
+    envCheck: {
+      SENDGRID_API_KEY_set: !!apiKey,
+      SENDGRID_API_KEY_prefix: apiKey ? apiKey.substring(0, 10) : null,
+      OWNER_EMAIL: ownerEmail,
+      FROM_EMAIL: fromEmail,
+    }
+  });
+
+  if (!apiKey) {
+    return res.status(500).json({ success: false, error: "Email service not configured - SENDGRID_API_KEY missing" });
   }
 
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-  const FROM_EMAIL = process.env.FROM_EMAIL || "contact@app-to-contact.com";
-  const OWNER_EMAIL = process.env.OWNER_EMAIL || FROM_EMAIL;
+  sgMail.setApiKey(apiKey);
 
   try {
-    console.log("Sending email to owner:", OWNER_EMAIL);
     await sgMail.send({
-      to: OWNER_EMAIL,
-      from: FROM_EMAIL,
+      to: ownerEmail,
+      from: fromEmail,
       subject: `New Contact: ${purpose}`,
       html: ownerTemplate({ name, email, purpose, description }),
     });
 
-    console.log("Sending confirmation email to user:", email);
     await sgMail.send({
       to: email,
-      from: FROM_EMAIL,
+      from: fromEmail,
       subject: "Thank You for Contacting Us",
       html: userTemplate({ name, purpose }),
     });
 
-    console.log("=== SUCCESS ===");
     return res.status(200).json({ success: true, message: "Message sent successfully" });
   } catch (error) {
-    console.error("=== SENDGRID ERROR ===");
-    console.error("Error message:", error.message);
-    console.error("Error response:", JSON.stringify(error?.response?.body, null, 2));
-    console.error("Full error:", error);
-    return res.status(500).json({ success: false, error: "Failed to send message" });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send message",
+      sendgridError: error?.response?.body || error.message
+    });
   }
 };
