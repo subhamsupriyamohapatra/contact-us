@@ -4,7 +4,6 @@
   "installCommand": "npm install",
   "functions": {
     "api/contact.js": {
-      "memory": 1024,
       "maxDuration": 10
     }
   }
