@@ -32,6 +32,13 @@ const userTemplate = ({ name, purpose }) => `
 `;
 
 module.exports = async (req, res) => {
+  console.log("=== REQUEST RECEIVED ===");
+  console.log("Method:", req.method);
+  console.log("SENDGRID_API_KEY set:", !!process.env.SENDGRID_API_KEY);
+  console.log("SENDGRID_API_KEY value:", process.env.SENDGRID_API_KEY ? process.env.SENDGRID_API_KEY.substring(0, 10) + "..." : "NOT SET");
+  console.log("OWNER_EMAIL:", process.env.OWNER_EMAIL);
+  console.log("FROM_EMAIL:", process.env.FROM_EMAIL);
+
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -48,28 +55,32 @@ module.exports = async (req, res) => {
   }
 
   const { name, email, purpose, description } = req.body;
+  console.log("Body:", req.body);
 
   if (!name || !email || !purpose || !description) {
     return res.status(400).json({ success: false, error: "All fields are required" });
   }
 
   if (!process.env.SENDGRID_API_KEY) {
-    console.error("SENDGRID_API_KEY is not set");
+    console.error("ERROR: SENDGRID_API_KEY is not set in environment");
     return res.status(500).json({ success: false, error: "Email service not configured" });
   }
 
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
   const FROM_EMAIL = process.env.FROM_EMAIL || "contact@app-to-contact.com";
+  const OWNER_EMAIL = process.env.OWNER_EMAIL || FROM_EMAIL;
 
   try {
+    console.log("Sending email to owner:", OWNER_EMAIL);
     await sgMail.send({
-      to: process.env.OWNER_EMAIL || FROM_EMAIL,
+      to: OWNER_EMAIL,
       from: FROM_EMAIL,
       subject: `New Contact: ${purpose}`,
       html: ownerTemplate({ name, email, purpose, description }),
     });
 
+    console.log("Sending confirmation email to user:", email);
     await sgMail.send({
       to: email,
       from: FROM_EMAIL,
@@ -77,9 +88,13 @@ module.exports = async (req, res) => {
       html: userTemplate({ name, purpose }),
     });
 
+    console.log("=== SUCCESS ===");
     return res.status(200).json({ success: true, message: "Message sent successfully" });
   } catch (error) {
-    console.error("SendGrid Error:", error?.response?.body || error.message);
+    console.error("=== SENDGRID ERROR ===");
+    console.error("Error message:", error.message);
+    console.error("Error response:", JSON.stringify(error?.response?.body, null, 2));
+    console.error("Full error:", error);
     return res.status(500).json({ success: false, error: "Failed to send message" });
   }
 };
